@@ -22,11 +22,9 @@ func categoryExists(name string, userID uint) bool {
 }
 
 func CreateCategory(c *gin.Context) {
-	// 1. Получить user_id из токена
 	userIDInterface, _ := c.Get("user_id")
 	userID := userIDInterface.(uint)
 
-	// 2. Валидация JSON
 	var request CreateCategoryRequest
 	err := c.ShouldBindJSON(&request)
 	if err != nil {
@@ -36,12 +34,10 @@ func CreateCategory(c *gin.Context) {
 		return
 	}
 
-	// 3. Проверка дублирования (общие + личные категории)
 	if categoryExists(request.Name, userID) {
 		c.JSON(http.StatusConflict, gin.H{"error": "This category already exists"})
 		return
 	}
-	// 4. Создание категории
 	category := models.Category{
 		Name:   request.Name,
 		UserID: &userID,
@@ -59,22 +55,18 @@ func CreateCategory(c *gin.Context) {
 }
 
 func GetCategories(c *gin.Context) {
-	// 1. Получить user_id из токена
 	userIDInterface, _ := c.Get("user_id")
 	userID := userIDInterface.(uint)
 
-	// 2. Найти категории (общие + личные)
 	var categories []models.Category
 	result := database.DB.Where("user_id = ? OR user_id IS NULL", userID).
 		Order("name ASC").
 		Find(&categories)
 
-	// 3. Обработать ошибки
 	if result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find categories"})
 		return
 	}
-	// 4. Вернуть результат
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Categories are found",
 		"categories": categories,
@@ -88,14 +80,12 @@ func UpdateCategory(c *gin.Context) {
 
 	categoryID := c.Param("id")
 
-	// 2. Валидация JSON
 	var request UpdateCategoryRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
 		return
 	}
 
-	// 3. Найти категорию И проверить права доступа
 	var category models.Category
 	result := database.DB.Where("id = ? AND user_id = ?", categoryID, userID).First(&category)
 	if result.Error != nil {
@@ -103,13 +93,11 @@ func UpdateCategory(c *gin.Context) {
 		return
 	}
 
-	// 4. Проверить дублирование (если имя изменилось)
 	if category.Name != request.Name && categoryExists(request.Name, userID) {
 		c.JSON(http.StatusConflict, gin.H{"error": "Category with this name already exists"})
 		return
 	}
 
-	// 5. Обновить и сохранить
 	category.Name = request.Name
 	result = database.DB.Save(&category)
 	if result.Error != nil {
@@ -117,7 +105,6 @@ func UpdateCategory(c *gin.Context) {
 		return
 	}
 
-	// 6. Вернуть результат
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "Category updated successfully",
 		"category": category,

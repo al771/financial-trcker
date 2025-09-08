@@ -5,8 +5,10 @@ import (
 	"financial-tracker/internal/models"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"strconv"
 	"time"
 )
+
 type CreateTransactionRequest struct {
 	Type        string    `json:"type" binding:"required,oneof=income expense"`
 	Description string    `json:"description" binding:"min=1,max=150"`
@@ -16,7 +18,6 @@ type CreateTransactionRequest struct {
 }
 
 func CreateTransaction(c *gin.Context) {
-
 
 	userIDInterface, _ := c.Get("user_id")
 	userID := userIDInterface.(uint)
@@ -71,15 +72,59 @@ func CreateTransaction(c *gin.Context) {
 	})
 }
 
-
-
-func GetTransactions(c *gin.Context){
+func GetTransactions(c *gin.Context) {
 	userIDInterface, _ := c.Get("user_id")
 	userID := userIDInterface.(uint)
 
-	var transactions []models.Transaction
-	result := result := database.DB.Where("user_id = ? OR user_id IS NULL", userID).
-		Order("name ASC").
-		Find(&categories)
+	query := database.DB.Preload("Category").Where("user_id = ?", userID)
 
+	if categoryID := c.Query("category_id"); categoryID != "" {
+		categoryIDInt, err := strconv.Atoi(categoryID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid category_id parameter"})
+			return
+		}
+		query = query.Where("category_id = ?", categoryIDInt)
+	}
+
+	if transactionType := c.Query("type"); transactionType != "" {
+		if transactionType != "income" && transactionType != "expense" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid transaction type"})
+			return
+		}
+		query = query.Where("type = ?", transactionType)
+	}
+
+	if dateFrom := c.Query("date_from"); dateFrom != "" {
+		_, err := time.Parse("2006-01-02", dateFrom)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid date_from format It must be YYYY-MM-DD"})
+			return
+		}
+		query = query.Where("date >= ?", dateFrom)
+	}
+
+	if dateTo := c.Query("date_to"); dateTo != "" {
+		_, err := time.Parse("2006-01-02", dateTo)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid date_to format It must be YYYY-MM-DD"})
+			return
+		}
+		query = query.Where("date <= ?", dateTo)
+	}
+
+	query = query.Order("date DESC")
+
+	limit := c.DefaultQuery("limit", "20")
+	limitInt, err := strconv.Atoi(limit)
+	if err != nil || limitInt <= 0 {
+		c.JSON(400, gin.H{"error": "Invalid limit parameter. It must be more then 0"})
+		return
+	}
+	query = query.Limit(limitInt)
+
+	var transactions []models.Transaction
+	query.Find(&transactions)
+
+	c.JSON(http.StatusOK, gin.H{"transactions": transactions})
 }
